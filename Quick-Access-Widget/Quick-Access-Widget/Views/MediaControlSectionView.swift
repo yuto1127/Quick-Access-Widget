@@ -93,10 +93,15 @@ struct MediaControlSectionView: View {
             }
 
             if !mediaManager.canControl {
-                Text("制御不可")
+                Text("制御不可（オートメーション許可が必要な場合あり）")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.6))
             }
+
+            Text(mediaManager.debugStatus)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.45))
+                .lineLimit(1)
         }
     }
 

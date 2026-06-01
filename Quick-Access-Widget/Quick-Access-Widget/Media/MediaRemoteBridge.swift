@@ -38,6 +38,8 @@ struct NowPlayingSnapshot {
     var album: String = ""
     var artwork: NSImage?
     var playbackState: MRPlaybackState = .stopped
+    var rawKeyCount: Int = 0
+    var rawKeySample: String = ""
     var isPlaying: Bool { playbackState == .playing }
 
     var hasMedia: Bool {
@@ -47,6 +49,8 @@ struct NowPlayingSnapshot {
 
 final class MediaRemoteBridge {
     private var handle: UnsafeMutableRawPointer?
+    private(set) var loadedPath: String?
+    private(set) var symbolStatus: [String: Bool] = [:]
 
     typealias RegisterFunc = @convention(c) (DispatchQueue?) -> Void
     typealias UnregisterFunc = @convention(c) () -> Void
@@ -66,21 +70,46 @@ final class MediaRemoteBridge {
     private var getIsPlaying: GetIsPlayingFunc?
     private var sendCommand: SendCommandFunc?
 
-    var isAvailable: Bool { handle != nil && registerForNotifications != nil }
+    var isAvailable: Bool { handle != nil && registerForNotifications != nil && getNowPlayingInfo != nil }
 
     init() {
-        handle = dlopen(
+        let candidates = [
             "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",
-            RTLD_LAZY
-        )
-        guard let handle else { return }
+            "/System/Library/PrivateFrameworks/MediaRemote.framework/Support/mediaremoted",
+            "/System/Library/PrivateFrameworks/MediaRemote.framework/Support/mediaremoteagent"
+        ]
+
+        for path in candidates {
+            if let h = dlopen(path, RTLD_LAZY) {
+                handle = h
+                loadedPath = path
+                break
+            }
+        }
+
+        guard let handle else {
+            symbolStatus["dlopen"] = false
+            return
+        }
+        symbolStatus["dlopen"] = true
 
         registerForNotifications = loadSymbol(handle, "MRMediaRemoteRegisterForNowPlayingNotifications")
+        symbolStatus["MRMediaRemoteRegisterForNowPlayingNotifications"] = (registerForNotifications != nil)
+
         unregisterForNotifications = loadSymbol(handle, "MRMediaRemoteUnregisterForNowPlayingNotifications")
+        symbolStatus["MRMediaRemoteUnregisterForNowPlayingNotifications"] = (unregisterForNotifications != nil)
+
         getNowPlayingInfo = loadSymbol(handle, "MRMediaRemoteGetNowPlayingInfo")
+        symbolStatus["MRMediaRemoteGetNowPlayingInfo"] = (getNowPlayingInfo != nil)
+
         getPlaybackState = loadSymbol(handle, "MRMediaRemoteGetNowPlayingApplicationPlaybackState")
+        symbolStatus["MRMediaRemoteGetNowPlayingApplicationPlaybackState"] = (getPlaybackState != nil)
+
         getIsPlaying = loadSymbol(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying")
+        symbolStatus["MRMediaRemoteGetNowPlayingApplicationIsPlaying"] = (getIsPlaying != nil)
+
         sendCommand = loadSymbol(handle, "MRMediaRemoteSendCommand")
+        symbolStatus["MRMediaRemoteSendCommand"] = (sendCommand != nil)
     }
 
     deinit {
@@ -103,6 +132,8 @@ final class MediaRemoteBridge {
 
         group.enter()
         fetchNowPlayingInfo { info in
+            snapshot.rawKeyCount = info.count
+            snapshot.rawKeySample = Self.keySample(from: info)
             snapshot.title = Self.string(from: info, keys: [MediaRemoteKeys.title, "title"])
             snapshot.artist = Self.string(from: info, keys: [MediaRemoteKeys.artist, "artist"])
             snapshot.album = Self.string(from: info, keys: [MediaRemoteKeys.album, "album"])
@@ -142,7 +173,8 @@ final class MediaRemoteBridge {
             let dictionary = (info as NSDictionary?) as? [AnyHashable: Any] ?? [:]
             completion(dictionary)
         }
-        getNowPlayingInfo(DispatchQueue.global(qos: .userInitiated), block)
+        // MediaRemote は main queue 指定のほうが安定するケースがある
+        getNowPlayingInfo(DispatchQueue.main, block)
     }
 
     private func fetchPlaybackState(completion: @escaping (MRPlaybackState) -> Void) {
@@ -154,7 +186,7 @@ final class MediaRemoteBridge {
         let block: PlaybackStateBlock = { rawState in
             completion(MRPlaybackState(rawValue: rawState) ?? .stopped)
         }
-        getPlaybackState(DispatchQueue.global(qos: .userInitiated), block)
+        getPlaybackState(DispatchQueue.main, block)
     }
 
     private func fetchIsPlaying(completion: @escaping (Bool) -> Void) {
@@ -165,7 +197,15 @@ final class MediaRemoteBridge {
         let block: IsPlayingBlock = { playing in
             completion(playing)
         }
-        getIsPlaying(DispatchQueue.global(qos: .userInitiated), block)
+        getIsPlaying(DispatchQueue.main, block)
+    }
+
+    private static func keySample(from info: [AnyHashable: Any]) -> String {
+        let keys = info.keys.prefix(6).map { key -> String in
+            if let s = key as? String { return s }
+            return String(describing: key)
+        }
+        return keys.joined(separator: ", ")
     }
 
     private static func string(from info: [AnyHashable: Any], keys: [String]) -> String {

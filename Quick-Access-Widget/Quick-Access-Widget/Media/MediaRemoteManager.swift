@@ -18,12 +18,15 @@ final class MediaRemoteManager {
     var hasActiveMedia = false
     var isAvailable = false
     var canControl = false
+    var debugStatus = ""
 
     private let bridge = MediaRemoteBridge()
     private var observers: [NSObjectProtocol] = []
     private var pollTimer: Timer?
 
     private var useMediaRemote = false
+    private var lastScriptKind: ScriptPlayerKind?
+    private var consecutiveEmptySnapshots = 0
 
     func startObserving() {
         useMediaRemote = bridge.isAvailable
@@ -68,6 +71,8 @@ final class MediaRemoteManager {
     func togglePlayPause() {
         if useMediaRemote {
             bridge.send(.togglePlayPause)
+        } else {
+            AppleScriptNowPlaying.playPause(prefer: lastScriptKind)
         }
         scheduleRefresh()
     }
@@ -75,6 +80,8 @@ final class MediaRemoteManager {
     func nextTrack() {
         if useMediaRemote {
             bridge.send(.nextTrack)
+        } else {
+            AppleScriptNowPlaying.nextTrack(prefer: lastScriptKind)
         }
         scheduleRefresh()
     }
@@ -82,6 +89,8 @@ final class MediaRemoteManager {
     func previousTrack() {
         if useMediaRemote {
             bridge.send(.previousTrack)
+        } else {
+            AppleScriptNowPlaying.previousTrack(prefer: lastScriptKind)
         }
         scheduleRefresh()
     }
@@ -111,7 +120,7 @@ final class MediaRemoteManager {
                 }
             }
         } else {
-            applyFromNowPlayingInfoCenter()
+            applyFromAppleScriptOrNowPlayingInfoCenter()
         }
     }
 
@@ -119,6 +128,21 @@ final class MediaRemoteManager {
         hasActiveMedia = snapshot.hasMedia
         isPlaying = snapshot.isPlaying
         artwork = snapshot.artwork
+        debugStatus = "MediaRemote: keys=\(snapshot.rawKeyCount) [\(snapshot.rawKeySample)]"
+
+        if snapshot.rawKeyCount == 0 {
+            consecutiveEmptySnapshots += 1
+        } else {
+            consecutiveEmptySnapshots = 0
+        }
+
+        // If MediaRemote keeps returning empty dictionaries, fall back to AppleScript.
+        if consecutiveEmptySnapshots >= 3 {
+            useMediaRemote = false
+            canControl = true
+            applyFromAppleScriptOrNowPlayingInfoCenter()
+            return
+        }
 
         if snapshot.hasMedia {
             title = snapshot.title.isEmpty ? "不明なタイトル" : snapshot.title
@@ -131,14 +155,39 @@ final class MediaRemoteManager {
         }
     }
 
+    private func applyFromAppleScriptOrNowPlayingInfoCenter() {
+        if let script = AppleScriptNowPlaying.fetchPreferred() {
+            lastScriptKind = script.kind
+            canControl = true
+
+            title = script.title.isEmpty ? "不明なタイトル" : script.title
+            artist = script.artist
+            album = script.album
+            isPlaying = script.isPlaying
+            artwork = script.artwork
+
+            hasActiveMedia = !title.isEmpty || !artist.isEmpty || artwork != nil
+            isAvailable = hasActiveMedia
+            debugStatus = "AppleScript: \(script.kind.rawValue)"
+            return
+        }
+
+        canControl = false
+        debugStatus = AppleScriptNowPlaying.debugFetchErrors()
+            ?? "AppleScript: 対応プレイヤー未検出（Spotify/Music）"
+        applyFromNowPlayingInfoCenter()
+    }
+
     private func applyFromNowPlayingInfoCenter() {
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let keyCount = info?.count ?? 0
 
         let newTitle = info?[MPMediaItemPropertyTitle] as? String
         let newArtist = info?[MPMediaItemPropertyArtist] as? String
         let playbackRateNumber = info?[MPNowPlayingInfoPropertyPlaybackRate] as? NSNumber
         let playbackRate = playbackRateNumber?.doubleValue ?? 0
         isPlaying = playbackRate > 0
+        debugStatus = String(format: "MPNowPlayingInfoCenter: keys=%d rate=%.2f", keyCount, playbackRate)
 
         if let titleStr = newTitle, !titleStr.isEmpty {
             title = titleStr
