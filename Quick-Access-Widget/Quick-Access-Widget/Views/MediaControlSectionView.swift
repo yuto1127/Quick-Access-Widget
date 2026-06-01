@@ -92,8 +92,8 @@ struct MediaControlSectionView: View {
                     .animation(.easeInOut(duration: 0.25), value: mediaManager.artist)
             }
 
-            if !mediaManager.isAvailable {
-                Text("MediaRemote 不可")
+            if !mediaManager.canControl {
+                Text("制御不可")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -101,7 +101,7 @@ struct MediaControlSectionView: View {
     }
 
     private var playbackControls: some View {
-        HStack(spacing: 16) {
+            HStack(spacing: 16) {
             transportButton(systemName: "backward.fill", action: mediaManager.previousTrack)
 
             Button(action: mediaManager.togglePlayPause) {
@@ -120,7 +120,7 @@ struct MediaControlSectionView: View {
                 .animation(.spring(response: 0.32, dampingFraction: 0.72), value: mediaManager.isPlaying)
             }
             .buttonStyle(.plain)
-            .disabled(!mediaManager.isAvailable)
+                .disabled(!mediaManager.canControl)
 
             transportButton(systemName: "forward.fill", action: mediaManager.nextTrack)
         }
@@ -134,6 +134,6 @@ struct MediaControlSectionView: View {
                 .foregroundStyle(.white.opacity(0.9))
         }
         .buttonStyle(.plain)
-        .disabled(!mediaManager.isAvailable)
+            .disabled(!mediaManager.canControl)
     }
 }
