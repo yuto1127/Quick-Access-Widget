@@ -76,6 +76,7 @@ final class MediaRemoteManager {
                 self?.refreshAll()
             }
         }
+        pollTimer?.tolerance = 0.3
     }
 
     private func scheduleRefresh() {

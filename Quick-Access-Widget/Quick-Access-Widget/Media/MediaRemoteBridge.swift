@@ -50,14 +50,20 @@ final class MediaRemoteBridge {
 
     typealias RegisterFunc = @convention(c) (DispatchQueue?) -> Void
     typealias UnregisterFunc = @convention(c) () -> Void
-    typealias GetNowPlayingInfoFunc = @convention(c) (DispatchQueue?, @escaping (CFDictionary?) -> Void) -> Void
-    typealias GetPlaybackStateFunc = @convention(c) (DispatchQueue?, @escaping (UInt32) -> Void) -> Void
+    typealias NowPlayingInfoBlock = @convention(block) (CFDictionary?) -> Void
+    typealias PlaybackStateBlock = @convention(block) (UInt32) -> Void
+    typealias IsPlayingBlock = @convention(block) (Bool) -> Void
+
+    typealias GetNowPlayingInfoFunc = @convention(c) (DispatchQueue?, NowPlayingInfoBlock) -> Void
+    typealias GetPlaybackStateFunc = @convention(c) (DispatchQueue?, PlaybackStateBlock) -> Void
+    typealias GetIsPlayingFunc = @convention(c) (DispatchQueue?, IsPlayingBlock) -> Void
     typealias SendCommandFunc = @convention(c) (UInt32, UnsafeRawPointer?) -> Void
 
     private var registerForNotifications: RegisterFunc?
     private var unregisterForNotifications: UnregisterFunc?
     private var getNowPlayingInfo: GetNowPlayingInfoFunc?
     private var getPlaybackState: GetPlaybackStateFunc?
+    private var getIsPlaying: GetIsPlayingFunc?
     private var sendCommand: SendCommandFunc?
 
     var isAvailable: Bool { handle != nil && registerForNotifications != nil }
@@ -73,6 +79,7 @@ final class MediaRemoteBridge {
         unregisterForNotifications = loadSymbol(handle, "MRMediaRemoteUnregisterForNowPlayingNotifications")
         getNowPlayingInfo = loadSymbol(handle, "MRMediaRemoteGetNowPlayingInfo")
         getPlaybackState = loadSymbol(handle, "MRMediaRemoteGetNowPlayingApplicationPlaybackState")
+        getIsPlaying = loadSymbol(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying")
         sendCommand = loadSymbol(handle, "MRMediaRemoteSendCommand")
     }
 
@@ -104,9 +111,16 @@ final class MediaRemoteBridge {
         }
 
         group.enter()
-        fetchPlaybackState { state in
-            snapshot.playbackState = state
-            group.leave()
+        if getPlaybackState != nil {
+            fetchPlaybackState { state in
+                snapshot.playbackState = state
+                group.leave()
+            }
+        } else {
+            fetchIsPlaying { playing in
+                snapshot.playbackState = playing ? .playing : .paused
+                group.leave()
+            }
         }
 
         group.notify(queue: .global(qos: .userInitiated)) {
@@ -124,10 +138,11 @@ final class MediaRemoteBridge {
             return
         }
 
-        getNowPlayingInfo(DispatchQueue.global(qos: .userInitiated)) { info in
+        let block: NowPlayingInfoBlock = { info in
             let dictionary = (info as NSDictionary?) as? [AnyHashable: Any] ?? [:]
             completion(dictionary)
         }
+        getNowPlayingInfo(DispatchQueue.global(qos: .userInitiated), block)
     }
 
     private func fetchPlaybackState(completion: @escaping (MRPlaybackState) -> Void) {
@@ -136,9 +151,21 @@ final class MediaRemoteBridge {
             return
         }
 
-        getPlaybackState(DispatchQueue.global(qos: .userInitiated)) { rawState in
+        let block: PlaybackStateBlock = { rawState in
             completion(MRPlaybackState(rawValue: rawState) ?? .stopped)
         }
+        getPlaybackState(DispatchQueue.global(qos: .userInitiated), block)
+    }
+
+    private func fetchIsPlaying(completion: @escaping (Bool) -> Void) {
+        guard let getIsPlaying else {
+            completion(false)
+            return
+        }
+        let block: IsPlayingBlock = { playing in
+            completion(playing)
+        }
+        getIsPlaying(DispatchQueue.global(qos: .userInitiated), block)
     }
 
     private static func string(from info: [AnyHashable: Any], keys: [String]) -> String {
