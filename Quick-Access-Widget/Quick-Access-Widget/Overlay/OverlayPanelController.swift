@@ -70,10 +70,10 @@ final class OverlayPanelController {
         guard let panel else { return }
 
         let screen = NSScreen.main?.visibleFrame ?? .zero
-        let width = screen.width / 3
-        let height = screen.height / 4
+        let width = screen.width * 0.26
+        let height = screen.height * 0.20
         let x = screen.midX - width / 2
-        let y = screen.maxY - height - 40
+        let y = screen.maxY - height - 36
 
         panel.setFrame(
             NSRect(x: x, y: y, width: width, height: height),

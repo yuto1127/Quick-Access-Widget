@@ -13,50 +13,51 @@ struct FileShelfSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Shelf")
-                .font(.headline)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(
                         isTargeted ? Color.accentColor : Color.secondary.opacity(0.3),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                        style: StrokeStyle(lineWidth: 1, dash: [5, 3])
                     )
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.primary.opacity(isTargeted ? 0.06 : 0.03))
                     )
 
                 if items.isEmpty {
-                    Text("ファイルやフォルダをここにドロップ")
-                        .font(.subheadline)
+                    Text("ドロップ")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding()
+                        .padding(8)
                 } else {
                     ScrollView {
                         LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 72, maximum: 96), spacing: 12)],
-                            spacing: 12
+                            columns: [GridItem(.adaptive(minimum: 52, maximum: 64), spacing: 8)],
+                            spacing: 8
                         ) {
                             ForEach(items) { item in
                                 shelfItemView(item)
                             }
                         }
-                        .padding(12)
+                        .padding(8)
                     }
                 }
             }
-            .frame(minHeight: 100, maxHeight: 140)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onDrop(of: [.fileURL], isTargeted: $isTargeted, perform: handleDrop)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
     private func shelfItemView(_ item: ShelfItem) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             Image(systemName: item.url.hasDirectoryPath ? "folder.fill" : "doc.fill")
-                .font(.title2)
+                .font(.body)
                 .foregroundStyle(.secondary)
 
             Text(item.displayName)
@@ -64,7 +65,7 @@ struct FileShelfSectionView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
         }
-        .frame(width: 72, height: 72)
+        .frame(width: 52, height: 52)
         .contextMenu {
             Button("削除", role: .destructive) {
                 removeItem(item)
@@ -75,11 +76,11 @@ struct FileShelfSectionView: View {
                 removeItem(item)
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .offset(x: 4, y: -4)
+            .offset(x: 2, y: -2)
         }
         .onDrag {
             NSItemProvider(object: item.url as NSURL)

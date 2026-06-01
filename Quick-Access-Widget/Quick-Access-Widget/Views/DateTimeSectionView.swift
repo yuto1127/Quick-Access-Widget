@@ -29,17 +29,21 @@ struct DateTimeSectionView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            VStack(spacing: 6) {
-                Text(Self.dateFormatter.string(from: context.date))
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.dateFormatter.string(from: context.date))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
 
-                Text(Self.weekdayFormatter.string(from: context.date))
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                    Text(Self.weekdayFormatter.string(from: context.date))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer(minLength: 8)
 
                 Text(Self.timeFormatter.string(from: context.date))
-                    .font(.system(size: 36, weight: .semibold, design: .rounded))
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
                     .monospacedDigit()
             }
             .frame(maxWidth: .infinity)

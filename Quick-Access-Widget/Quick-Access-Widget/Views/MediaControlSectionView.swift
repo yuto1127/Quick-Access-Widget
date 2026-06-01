@@ -9,56 +9,63 @@ struct MediaControlSectionView: View {
     @Bindable var mediaManager: MediaRemoteManager
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("メディア")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 6) {
                 Image(systemName: mediaManager.isPlaying ? "waveform" : "waveform.slash")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mediaManager.title)
-                        .font(.headline)
+                Text(mediaManager.title)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
+                if !mediaManager.artist.isEmpty {
+                    Text(mediaManager.artist)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-
-                    if !mediaManager.artist.isEmpty {
-                        Text(mediaManager.artist)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                        .frame(maxWidth: .infinity)
                 }
-
-                Spacer(minLength: 0)
             }
 
             if !mediaManager.isAvailable {
-                Text("MediaRemote を利用できません")
-                    .font(.caption)
+                Text("MediaRemote 不可")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 24) {
+            Spacer(minLength: 0)
+
+            HStack(spacing: 16) {
                 Button(action: mediaManager.previousTrack) {
                     Image(systemName: "backward.fill")
-                        .font(.title3)
+                        .font(.body)
                 }
                 .buttonStyle(.plain)
                 .disabled(!mediaManager.isAvailable)
 
                 Button(action: mediaManager.togglePlayPause) {
                     Image(systemName: mediaManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 32))
+                        .font(.system(size: 26))
                 }
                 .buttonStyle(.plain)
                 .disabled(!mediaManager.isAvailable)
 
                 Button(action: mediaManager.nextTrack) {
                     Image(systemName: "forward.fill")
-                        .font(.title3)
+                        .font(.body)
                 }
                 .buttonStyle(.plain)
                 .disabled(!mediaManager.isAvailable)
             }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

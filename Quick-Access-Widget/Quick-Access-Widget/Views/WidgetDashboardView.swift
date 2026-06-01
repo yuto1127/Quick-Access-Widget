@@ -9,19 +9,28 @@ struct WidgetDashboardView: View {
     let mediaManager: MediaRemoteManager
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             DateTimeSectionView()
+
             Divider()
-            MediaControlSectionView(mediaManager: mediaManager)
-            Divider()
-            FileShelfSectionView()
+
+            HStack(alignment: .top, spacing: 10) {
+                FileShelfSectionView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                MediaControlSectionView(mediaManager: mediaManager)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxHeight: .infinity)
         }
-        .padding(20)
+        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
