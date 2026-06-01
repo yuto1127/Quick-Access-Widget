@@ -44,7 +44,6 @@ final class MediaRemoteManager {
 
         observers = [infoObserver, playbackObserver]
         refreshNowPlaying()
-        refreshPlaybackState()
     }
 
     func togglePlayPause() {

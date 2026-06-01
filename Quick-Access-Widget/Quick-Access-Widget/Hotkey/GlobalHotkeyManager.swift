@@ -5,22 +5,60 @@
 
 import AppKit
 import ApplicationServices
+import os
 
 final class GlobalHotkeyManager {
     var onToggle: (() -> Void)?
 
+    private let logger = Logger(subsystem: "Local.Quick-Access-Widget", category: "Hotkey")
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var retryTimer: Timer?
+    private var didShowPermissionAlert = false
 
     /// Globe / Fn key codes vary by keyboard; extend if needed.
-    /// Common values: 63 (Globe on Apple Silicon), 179 (some external keyboards).
-    /// To discover your keyCode, log `event.getIntegerValueField(.keyboardEventKeycode)` on keyDown.
     private let triggerKeyCodes: Set<Int64> = [63, 179]
+
+    /// Fallback when Cmd+Globe/Fn is intercepted by macOS or not emitted by the keyboard.
+    private let fallbackKeyCode: Int64 = 49 // Space
+    private let fallbackRequiredFlags: CGEventFlags = [.maskCommand, .maskShift]
 
     func start() {
         requestAccessibilityPermission()
+        installEventTapIfNeeded()
 
-        let eventMask = (1 << CGEventType.keyDown.rawValue)
+        guard retryTimer == nil else { return }
+        retryTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.installEventTapIfNeeded()
+        }
+    }
+
+    func ensureMonitoring() {
+        installEventTapIfNeeded()
+    }
+
+    func stop() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+        uninstallEventTap()
+    }
+
+    private func installEventTapIfNeeded() {
+        guard eventTap == nil else { return }
+
+        guard AXIsProcessTrusted() else {
+            if !didShowPermissionAlert {
+                didShowPermissionAlert = true
+                showAccessibilityAlert()
+            }
+            return
+        }
+
+        let eventMask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.tapDisabledByTimeout.rawValue)
+            | (1 << CGEventType.tapDisabledByUserInput.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon else {
@@ -35,10 +73,15 @@ final class GlobalHotkeyManager {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
+            eventsOfInterest: eventMask,
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            logger.error("CGEventTap の作成に失敗しました。アクセシビリティ権限を確認してください。")
+            if !didShowPermissionAlert {
+                didShowPermissionAlert = true
+                showAccessibilityAlert()
+            }
             return
         }
 
@@ -48,9 +91,10 @@ final class GlobalHotkeyManager {
             CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        logger.info("グローバルショートカット監視を開始しました。")
     }
 
-    func stop() {
+    private func uninstallEventTap() {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
@@ -62,29 +106,74 @@ final class GlobalHotkeyManager {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         guard type == .keyDown else {
             return Unmanaged.passUnretained(event)
         }
 
+        if shouldToggle(for: event) {
+            DispatchQueue.main.async { [weak self] in
+                self?.onToggle?()
+            }
+            return nil
+        }
+
+        return Unmanaged.passUnretained(event)
+    }
+
+    private func shouldToggle(for event: CGEvent) -> Bool {
         let flags = event.flags
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat).boolValue
 
-        guard flags.contains(.maskCommand),
-              triggerKeyCodes.contains(keyCode),
-              !event.getIntegerValueField(.keyboardEventAutorepeat).boolValue else {
-            return Unmanaged.passUnretained(event)
+        if isRepeat { return false }
+
+        // Cmd + Globe / Fn
+        if flags.contains(.maskCommand), triggerKeyCodes.contains(keyCode) {
+            return true
         }
 
-        DispatchQueue.main.async { [weak self] in
-            self?.onToggle?()
+        // Fallback: Cmd + Shift + Space
+        if keyCode == fallbackKeyCode,
+           fallbackRequiredFlags.isSubset(of: flags) {
+            return true
         }
 
-        return nil
+        return false
     }
 
     private func requestAccessibilityPermission() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    private func showAccessibilityAlert() {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "アクセシビリティ権限が必要です"
+            alert.informativeText = """
+            ウィジェットを表示するには、システム設定 → プライバシーとセキュリティ → アクセシビリティ で Quick-Access-Widget を許可してください。
+
+            ショートカット:
+            ・Cmd + Globe（または Cmd + Fn）
+            ・代替: Cmd + Shift + Space
+
+            Xcode から実行している場合は、DerivedData 内の .app に対して許可が必要なことがあります。
+            """
+            alert.addButton(withTitle: "システム設定を開く")
+            alert.addButton(withTitle: "後で")
+            if alert.runModal() == .alertFirstButtonReturn {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
     }
 }
 

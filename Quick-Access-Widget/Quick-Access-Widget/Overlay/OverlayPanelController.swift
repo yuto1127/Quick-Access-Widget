@@ -62,7 +62,7 @@ final class OverlayPanelController {
     private func makePanel() -> OverlayPanel {
         let dashboard = WidgetDashboardView(mediaManager: mediaManager)
         let hostingView = NSHostingView(rootView: dashboard)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        hostingView.autoresizingMask = [.width, .height]
         return OverlayPanel(contentView: hostingView)
     }
 
@@ -79,6 +79,7 @@ final class OverlayPanelController {
             NSRect(x: x, y: y, width: width, height: height),
             display: true
         )
+        panel.contentView?.frame = panel.contentView?.superview?.bounds ?? panel.frame
     }
 
     private func startLocalKeyMonitor() {

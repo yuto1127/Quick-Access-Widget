@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mediaManager.startObserving()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        hotkeyManager.ensureMonitoring()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
