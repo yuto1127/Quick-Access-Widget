@@ -70,8 +70,8 @@ final class OverlayPanelController {
         guard let panel else { return }
 
         let screen = NSScreen.main?.visibleFrame ?? .zero
-        let width = screen.width * 0.26
-        let height = screen.height * 0.20
+        let width = screen.width * 0.34
+        let height = screen.height * 0.28
         let x = screen.midX - width / 2
         let y = screen.maxY - height - 36
 
