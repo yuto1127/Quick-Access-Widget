@@ -2,31 +2,25 @@
 //  Quick_Access_WidgetApp.swift
 //  Quick-Access-Widget
 //
-//  Created by 赤石優斗 on R 8/06/01.
-//
 
 import SwiftUI
-import SwiftData
 
 @main
 struct Quick_Access_WidgetApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            EmptyView()
         }
-        .modelContainer(sharedModelContainer)
+        .defaultLaunchBehavior(.suppressed)
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("終了") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
+            }
+        }
     }
 }
