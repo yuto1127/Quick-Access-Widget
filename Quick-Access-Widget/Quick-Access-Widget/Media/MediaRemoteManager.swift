@@ -3,6 +3,7 @@
 //  Quick-Access-Widget
 //
 
+import AppKit
 import Foundation
 
 @MainActor
@@ -10,77 +11,101 @@ import Foundation
 final class MediaRemoteManager {
     var title = "再生中のメディアなし"
     var artist = ""
+    var album = ""
+    var artwork: NSImage?
     var isPlaying = false
+    var hasActiveMedia = false
     var isAvailable = false
 
     private let bridge = MediaRemoteBridge()
     private var observers: [NSObjectProtocol] = []
+    private var pollTimer: Timer?
 
     func startObserving() {
         isAvailable = bridge.isAvailable
         guard isAvailable else { return }
 
-        bridge.registerNotifications(on: .main)
+        bridge.registerNotifications(on: DispatchQueue.main)
 
-        let infoObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(MediaRemoteKeys.nowPlayingInfoDidChange),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshNowPlaying()
+        let notificationNames = [
+            MediaRemoteKeys.nowPlayingInfoDidChange,
+            MediaRemoteKeys.playbackDidChange,
+            MediaRemoteKeys.applicationDidChange
+        ]
+
+        observers = notificationNames.map { name in
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name(name),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.refreshAll()
             }
         }
 
-        let playbackObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(MediaRemoteKeys.playbackDidChange),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshPlaybackState()
-            }
-        }
+        startPolling()
+        refreshAll()
+    }
 
-        observers = [infoObserver, playbackObserver]
-        refreshNowPlaying()
+    func stopObserving() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers = []
     }
 
     func togglePlayPause() {
         bridge.send(.togglePlayPause)
+        scheduleRefresh()
     }
 
     func nextTrack() {
         bridge.send(.nextTrack)
+        scheduleRefresh()
     }
 
     func previousTrack() {
         bridge.send(.previousTrack)
+        scheduleRefresh()
     }
 
-    private func refreshNowPlaying() {
-        bridge.fetchNowPlayingInfo { [weak self] info in
+    private func startPolling() {
+        pollTimer?.invalidate()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                let newTitle = info[MediaRemoteKeys.title] as? String ?? ""
-                let newArtist = info[MediaRemoteKeys.artist] as? String ?? ""
-
-                if newTitle.isEmpty && newArtist.isEmpty {
-                    self.title = "再生中のメディアなし"
-                    self.artist = ""
-                } else {
-                    self.title = newTitle.isEmpty ? "不明なタイトル" : newTitle
-                    self.artist = newArtist
-                }
+                self?.refreshAll()
             }
         }
     }
 
-    private func refreshPlaybackState() {
-        bridge.fetchIsPlaying { [weak self] playing in
+    private func scheduleRefresh() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            refreshAll()
+        }
+    }
+
+    private func refreshAll() {
+        bridge.fetchSnapshot { [weak self] snapshot in
             Task { @MainActor in
-                self?.isPlaying = playing
+                self?.apply(snapshot)
             }
+        }
+    }
+
+    private func apply(_ snapshot: NowPlayingSnapshot) {
+        hasActiveMedia = snapshot.hasMedia
+        isPlaying = snapshot.isPlaying
+        artwork = snapshot.artwork
+
+        if snapshot.hasMedia {
+            title = snapshot.title.isEmpty ? "不明なタイトル" : snapshot.title
+            artist = snapshot.artist
+            album = snapshot.album
+        } else {
+            title = "再生中のメディアなし"
+            artist = ""
+            album = ""
         }
     }
 }
